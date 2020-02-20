@@ -51,14 +51,15 @@ class OAEP:
         self.k0 = k0
         self.k1 = k1
 
-    def generateOAEPparams(self):
-        if self.k0 == None:
-            self.k0 = random.randrange(1 << 127, (1 << 128) - 1)
-        if self.k1 == None:
-            self.k1 = random.randrange(1 << 127, (1 << 128) - 1)
-        if self.blockLength == None:
-            self.blockLength = 1024
-        return (self.blockLength, self.k0, self.k1)
+    def setOAEPparams(self, blockLength, k0, k1):
+        self.blockLength = blockLength
+        self.k0 = k0
+        self.k1 = k1
+
+    def generateOAEPparams(self, blockLength, k0length, k1length):
+        self.k0 = random.randrange(1 << (k0length - 1), (1 << k0length - 1))
+        self.k1 = random.randrange(1 << (k1length - 1), (1 << k1length) - 1)
+        self.blockLength = blockLength
 
     def _G(self, r):
         k0len = self.k0.bit_length()
@@ -89,7 +90,7 @@ class OAEP:
     
     def encode(self, messageBits):
         if self.k0 == None or self.k1 == None or self.blockLength == None:
-            self.generateOAEPparams()
+            self.generateOAEPparams(1024, 128, 128)
 
         k0len = self.k0.bit_length()
         k1len = self.k1.bit_length()

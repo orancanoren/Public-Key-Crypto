@@ -218,9 +218,9 @@ class AES(BlockCipher):
             self.roundKeys.append(roundKey)
 
     def getKeys(self) -> dict:
-        keyDict = { 'AES KEY': self.key }
+        keyDict = { 'AES_KEY': self.key }
         if self.mode._iv:
-            keyDict['AES IV'] = self.mode._iv
+            keyDict['AES_IV'] = self.mode._iv
         return keyDict
 
     def encryptBlock(self, block):

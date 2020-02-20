@@ -8,5 +8,3 @@ class TestEncoding(unittest.TestCase):
     
     def testDecode(self):
         self.assertEqual('teststring', Encoding.decodeBits(549665952565679142563431), 'Decoding encoded bits')
-
-unittest.main()

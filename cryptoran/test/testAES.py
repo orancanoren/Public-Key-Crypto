@@ -1,5 +1,4 @@
 import unittest
-import os, sys
 
 from ..packages.blockcipher import AES
 

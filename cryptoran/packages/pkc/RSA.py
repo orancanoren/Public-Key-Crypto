@@ -10,63 +10,129 @@ from .pkc import PKC
 # Email: orancanoren@gmail.com
 # ==============================================
 
+class RSAPublicKey:
+    def __init__(self, encryptionExponent, modulus):
+        self.encryptionExponent = encryptionExponent
+        self.modulus = modulus
+
+class RSAPrivateKey:
+    def __init__(self, decryptionExponent):
+        self.decryptionExponent = decryptionExponent
+
 class RSA(PKC):
-    def __init__(self, pubKey=None, privKey=None, modulus=None,
-            primeLength=None, oaepBlocksize=1024, oaepk0=128, oaepk1=128,
-            oaep=False, asciiEncode = True):
-        super().__init__(pubKey, privKey, modulus, primeLength)
-        self.oaepBlocksize = oaepBlocksize
-        self.oaepk0 = oaepk0
-        self.oaepk1 = oaepk1
-        self.enableOaep = oaep
+    def __init__(self, enableOAEP=False, asciiEncode = True):
+        # Args:
+        # - pubkeyDictionary: A dictionary containing public key values
+        # - privkeyDictionary: A dictionary containing private key values
+        # - enableOAEP: Set true to enable OAEP encoding, type: bool
+        # - oaepEncoder: OAEP encoder object used to encode/decode messages, type: Encoding.OAEP,
+        # - asciiEncode: Set true to encode ASCII messages prior encryption and to decode ASCII post decryption
+        self.enableOAEP = enableOAEP
         self.asciiEncode = asciiEncode
+        self.publicKey = None
+        self.privateKey = None
 
-    def generateKeys(self) -> tuple:
-        # 1 - pick primes
-        if not self.pubKey or not self.privKey:
-            p = Utils.randomLargePrime(self.primeLength // 2)
-            q = Utils.randomLargePrime(self.primeLength // 2)
-            while p == q:
-                q = Utils.randomLargePrime(self.primeLength // 2)
+    def setPublicKey(self, keyDictionary: dict):
+        dictionaryFields = keyDictionary.keys()
+        if 'ENCEXPONENT' not in dictionaryFields or 'MODULUS' not in dictionaryFields:
+            raise ValueError('Provided RSA public key dictionary does not contain required fields!')
 
-        # 2 - compute the modulus
-        if not self.modulus:
-            n = p * q
-            totient = (p - 1) * (q - 1)
+        self.publicKey = RSAPublicKey(keyDictionary['ENCEXPONENT'], keyDictionary['MODULUS'])
+        if self.enableOAEP:
+            if ('OAEPBLOCKSIZE' not in dictionaryFields) or ('OAEPK0' not in dictionaryFields) or ('OAEPK1' not in dictionaryFields):
+                raise ValueError('Provided RSA public key dictionary does not contain all/any OAEP parameters!')
 
-        # 3 - pick encryption exponent
-        if not self.pubKey:
-            e = 2
-            while Utils.EEA(e, totient)[0] != 1:
-                e = random.randint(2, totient - 1)
+            self.oaepEncoder = Encoding.OAEP(keyDictionary['OAEPBLOCKSIZE'], 
+                keyDictionary['OAEPK0'], keyDictionary['OAEPK1'])
 
-        # 4 - compute decryption exponent
-        if not self.privKey:
-            d = Utils.multiplicative_inverse(e, totient)
+    def setPrivateKey(self, keyDictionary: dict):
+        dictionaryFields = keyDictionary.keys()
+        if 'DECEXPONENT' not in dictionaryFields:
+            raise ValueError('Provided RSA private key dictionary does not contain the decryption exponent!')
 
-        self.pubKey = e
-        self.privKey = d
-        self.modulus = n
-        return ((e, n), (d, ))
+        self.privateKey = RSAPrivateKey(keyDictionary['DECEXPONENT'])
+
+    def generateKeypair(self, keysize, oaepBlocksize=None, oaepk0length=None, oaepk1length=None):
+        '''Generates and sets the RSA keypair'''
+        # Args:
+        # - keysize: keysize in number of bits to generate
+        # - oaepBlocksize: blocksize parameter of OAEP
+        # - oaepk0length: length of k0 in bits
+        # - oaepk1length: length of k1 in bits
+        # If any of the OAEP parameters are provided, all of the OAEP parameters are expected.
+        # if not given and OAEP is enabled, default OAEP parameters (1024, 128, 128) is used
+
+        # 1 - check the parameters
+        if any([oaepBlocksize, oaepk0length, oaepk1length]) and not all([oaepBlocksize, oaepk0length, oaepk1length]):
+            raise Exception("Insufficient OAEP parameters are provided")
+        
+        if 0 > keysize or keysize > 8192:
+            raise Exception("Key size is not in range (0, 8192]")
+
+        # 2 - set OAEP parameters if enabled
+        if self.enableOAEP:
+            self.oaepEncoder.generateOAEPparams(oaepBlocksize, oaepk0length, oaepk1length)
+        
+        # 3 - pick primes
+        p = Utils.randomLargePrime(keysize // 2)
+        q = Utils.randomLargePrime(keysize // 2)
+        while p == q:
+            q = Utils.randomLargePrime(keysize // 2)
+
+        # 4 - compute the modulus
+        n = p * q
+
+        # 5 - pick encryption exponent
+        totient = (p - 1) * (q - 1)
+        e = 2
+        while Utils.EEA(e, totient)[0] != 1:
+            e = random.randint(2, totient - 1)
+
+        # 6 - compute decryption exponent
+        d = Utils.multiplicative_inverse(e, totient)
+
+        self.primes = (p, q)
+        self.publicKey = RSAPublicKey(e, n, )
+        self.privateKey = RSAPrivateKey(d)
 
     def encrypt(self, messageString) -> int:
+        if not self.publicKey:
+            raise ValueError('Public key not set at time of encryption!')
+
         if self.asciiEncode:
             messageString = Encoding.encodeText(messageString)
-        if self.enableOaep:
-            encoder = Encoding.OAEP(self.oaepBlocksize)
-            if not (self.oaepk0 and self.oaepk1 and self.oaepBlocksize):
-                self.oaepBlocksize, self.oaepk0, self.oaepk1 = encoder.generateOAEPparams()
-            messageString = encoder.encode(messageString)
-        return pow(messageString, self.pubKey, self.modulus)
+            
+        if self.enableOAEP:
+            messageString = self.oaepEncoder.encode(messageString)
+        return pow(messageString, self.publicKey.encryptionExponent, self.publicKey.modulus)
 
     def decrypt(self, ciphertext) -> str:
-        if self.enableOaep and (self.oaepBlocksize == None or self.oaepk0 == None or self.oaepk1 == None):
-            raise ValueError("OAEP parameters are not ready at time of decryption")
-
-        decrypted = pow(ciphertext, self.privKey, self.modulus)
-        if self.enableOaep:
-            OAEPencoder = Encoding.OAEP(self.oaepBlocksize, self.oaepk0, self.oaepk1)
-            decrypted = OAEPencoder.decode(decrypted)
+        if not self.privateKey:
+            raise Exception("Private key not set at time of decryption!")
+        decrypted = pow(ciphertext, self.privateKey.decryptionExponent, self.publicKey.modulus)
+        if self.enableOAEP:
+            decrypted = self.oaepEncoder.decode(decrypted)
         if self.asciiEncode:
             decrypted = Encoding.decodeBits(decrypted)
         return decrypted
+
+    def getPrivkey(self) -> dict:
+        keyDictionary = {
+            'DECEXPONENT': self.privateKey.decryptionExponent,
+        }
+
+        return keyDictionary
+
+
+    def getPubkey(self) -> dict:
+        keyDictionary = {
+            'ENCEXPONENT': self.publicKey.encryptionExponent,
+            'MODULUS': self.publicKey.modulus
+        }
+
+        if self.enableOAEP:
+            keyDictionary['OAEPBLOCKSIZE'] = self.oaepEncoder.blockLength
+            keyDictionary['OAEPK0'] = self.oaepEncoder.k0
+            keyDictionary['OAEPK1'] = self.oaepEncoder.k1
+
+        return keyDictionary

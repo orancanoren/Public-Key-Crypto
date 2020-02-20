@@ -14,11 +14,9 @@ class ElGamal:
         self.p = None
         self.g = None
     
-    def generateKeys(self):
+    def generateKeypair(self):
         # 1 - compute p & q
-        group = Utils.getGroupWithGenerator(256)
-        p = group[0]
-        g = group[1]
+        p, g = Utils.getGroupWithGenerator(256)
 
         # 3 - compute private and public keys
         b = random.randint(2, p)
@@ -28,6 +26,16 @@ class ElGamal:
         self.privateKey = b
         self.p = p
         self.g = g
+
+    def _checkKeyDictionary(dictionary: dict, requiredFields):
+        # requiredFields is expected to be an iterable, where each element is a
+        # required key in dictionary
+        keys = dictionary.keys()
+
+        for field in requiredFields:
+            if not field in keys:
+                return False
+        return True
 
     def encrypt(self, messageString):
         encodedMessage = Encoding.encodeText(messageString)
